@@ -39,8 +39,11 @@ pipeline {
       steps {
         script {
           // Login to Docker Hub with username and PAT (Personal Access Token)
-          withCredentials([usernamePassword(credentialsId: 'dockerhub-jenkins-id', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
-            bat "echo ${DOCKERHUB_TOKEN} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
+          // withCredentials([usernamePassword(credentialsId: 'dockerhub-jenkins-id', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          //   bat "echo ${DOCKERHUB_TOKEN} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
+
+                      withCredentials([usernamePassword(credentialsId: 'dockerhub-jenkins-id', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
+            bat "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
             
             // Push the Docker image to the specified registry
             bat "docker tag ${registry}:${VERSION} ${registryURL}/${registry}:${VERSION}"
