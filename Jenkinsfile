@@ -7,7 +7,7 @@ pipeline {
     string(name: 'readMe', defaultValue: '', description: 'Read Me content')
   }
   environment {
-    registry = 'kapil321/another_office_repo' // Updated repository name
+    registry = 'kapil321/internship_project' // Updated repository name
     registryCredentials = 'kapil-dockerhub-cred'
     dockerImage = ''
     img = ''
@@ -17,31 +17,40 @@ pipeline {
   stages {
     stage('Build Image') {
       steps {
-        bat """
-          set img=${registry}:${VERSION}
-          docker build --build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} -t %img% .
-        """
+        script {
+          img = "${registry}:${VERSION}"
+          dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
+        }
       }
     }
 
     stage("Run the Image") {
       steps {
-        bat """
-          docker stop %JOB_NAME% || true
-          docker rm %JOB_NAME% || true
-          docker run -d --name %JOB_NAME% -p 8000:8000 %img%
-        """
+        script {
+          // Stop and remove the existing container if it exists
+          sh """
+            docker stop ${JOB_NAME} || true
+            docker rm ${JOB_NAME} || true
+          """
+          // Run the new container
+          sh "docker run -d --name ${JOB_NAME} -p 8000:8000 ${img}"
+        }
       }
     }
 
     stage("Publish it to docker") {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub_password', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-          bat """
-            echo %DOCKERHUB_PASSWORD% | docker login -u %DOCKERHUB_USERNAME% --password-stdin
-            docker tag %img% ${registry}:${VERSION}
-            docker push ${registry}:${VERSION}
-          """
+        script {
+          // Login to Docker Hub
+          withCredentials([usernamePassword(credentialsId: 'dockerhub_jenkins_id', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
+            sh "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
+          }
+
+          // Tag the Docker image with the version number
+          sh "docker tag ${img} ${registry}:${VERSION}"
+
+          // Push the Docker image to the registry
+          sh "docker push ${registry}:${VERSION}"
         }
       }
     }
@@ -75,7 +84,7 @@ pipeline {
       script {
         def errorMessage = ""
         try {
-          errorMessage = bat(script: 'docker run --rm %img% cat /error.log', returnStdout: true).trim()
+          errorMessage = sh(script: 'docker run --rm ${img} cat /error.log', returnStdout: true).trim()
         } catch (Exception e) {
           errorMessage = "Error log not found or another error occurred"
         }
