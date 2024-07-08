@@ -8,7 +8,6 @@ pipeline {
   }
   environment {
     registry = 'kapil321/another_office_repo' // Updated repository name
-    dockerhubPassword = credentials('dockerhub_password') // Use Jenkins credentials for Docker Hub password
     registryURL = 'docker.io' // Default registry URL for Docker Hub, adjust as per your Docker registry
   }
   agent any
@@ -39,12 +38,14 @@ pipeline {
     stage("Publish to Registry") {
       steps {
         script {
-          // Login to Docker Hub with username and password
-          bat "docker login -u ${env.DOCKERHUB_USERNAME} -p ${dockerhubPassword}"
-          
-          // Push the Docker image to the specified registry
-          bat "docker tag ${registry}:${VERSION} ${registryURL}/${registry}:${VERSION}"
-          bat "docker push ${registryURL}/${registry}:${VERSION}"
+          // Login to Docker Hub with username and PAT (Personal Access Token)
+          withCredentials([usernamePassword(credentialsId: 'dockerhub_credentials_id', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+            bat "echo ${DOCKERHUB_TOKEN} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
+            
+            // Push the Docker image to the specified registry
+            bat "docker tag ${registry}:${VERSION} ${registryURL}/${registry}:${VERSION}"
+            bat "docker push ${registryURL}/${registry}:${VERSION}"
+          }
         }
       }
     }
