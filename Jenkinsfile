@@ -28,8 +28,8 @@ pipeline {
       steps {
         script {
           // Stop and remove the existing container if it exists
-          bat "docker stop ${JOB_NAME} || true"
-          bat "docker rm ${JOB_NAME} || true"
+          bat "docker stop ${JOB_NAME} 2>&1"
+          bat "docker rm ${JOB_NAME} 2>&1"
 
           // Run the new container
           bat "docker run -d --name ${JOB_NAME} -p 8000:8000 ${img}"
