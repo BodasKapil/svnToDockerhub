@@ -6,43 +6,50 @@ pipeline {
     string(name: 'authorName', defaultValue: '', description: 'Name of the author')
     string(name: 'readMe', defaultValue: '', description: 'Read Me content')
   }
-  agent any
   environment {
-    dockerImage = ''
-    img = ''
-    registry = 'kapil321/demo-docker-repo' // Updated repository name
+    registry = 'kapil321/another_office_repo' // Updated repository name
+    dockerhubPassword = credentials('dockerhub_password') // Use Jenkins credentials for Docker Hub password
+    registryURL = 'docker.io' // Default registry URL for Docker Hub, adjust as per your Docker registry
   }
+  agent any
+
   stages {
     stage('Build Image') {
       steps {
         script {
-          img = "${registry}:${params.VERSION}-${env.BUILD_ID}"
-          dockerImage = docker.build(img)
+          def img = "${registry}:${VERSION}"
+          def dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
         }
       }
     }
+
     stage("Run the Image") {
       steps {
-        bat "start /B docker run -d --name ${params.PROJECT_NAME} -p 8000:8000 ${img}"
+        script {
+          def imageName = "${registry}:${VERSION}"
+          // Stop and remove the existing container if it exists
+          bat "docker stop ${env.JOB_NAME} || exit 0"
+          bat "docker rm ${env.JOB_NAME} || exit 0"
+          // Run the new container
+          bat "docker run -d --name ${env.JOB_NAME} -p 8000:8000 ${imageName}"
+        }
       }
     }
-    stage("Publish to DockerHub") {
+
+    stage("Publish to Registry") {
       steps {
         script {
-          // Login to Docker Hub using Jenkins credentials
-          withCredentials([usernamePassword(credentialsId: 'dockerhub_password', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-            bat "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
-          }
+          // Login to Docker Hub with username and password
+          bat "docker login -u ${env.DOCKERHUB_USERNAME} -p ${dockerhubPassword}"
           
-          // Tag the Docker image
-          bat "docker tag ${img} ${registry}:${params.VERSION}-${env.BUILD_ID}"
-          
-          // Push the Docker image to the registry
-          bat "docker push ${registry}:${params.VERSION}-${env.BUILD_ID}"
+          // Push the Docker image to the specified registry
+          bat "docker tag ${registry}:${VERSION} ${registryURL}/${registry}:${VERSION}"
+          bat "docker push ${registryURL}/${registry}:${VERSION}"
         }
       }
     }
   }
+
   post {
     success {
       emailext(
@@ -51,13 +58,13 @@ pipeline {
           <html>
             <body>
               <p>Build Status: SUCCESS</p>
-              <p>Build Number: ${BUILD_NUMBER}</p>
+              <p>Build Number: ${env.BUILD_NUMBER}</p>
               <p>Version: ${params.VERSION}</p>
               <p>Author: ${params.authorName}</p>
               <p>Project Name: ${params.PROJECT_NAME}</p>
               <p>Read Me:</p>
               <pre>${params.readMe}</pre>
-              <p>Check the <a href="${BUILD_URL}">Console Output</a>.</p>
+              <p>Check the <a href="${env.BUILD_URL}">Console Output</a>.</p>
             </body>
           </html>
         """,
@@ -71,7 +78,7 @@ pipeline {
       script {
         def errorMessage = ""
         try {
-          errorMessage = sh(script: 'docker run --rm ${img} cat /error.log', returnStdout: true).trim()
+          errorMessage = bat(script: "docker run --rm ${registry}:${VERSION} cat /error.log", returnStdout: true).trim()
         } catch (Exception e) {
           errorMessage = "Error log not found or another error occurred"
         }
@@ -81,7 +88,7 @@ pipeline {
             <html>
               <body>
                 <p>Build Status: FAILURE</p>
-                <p>Build Number: ${BUILD_NUMBER}</p>
+                <p>Build Number: ${env.BUILD_NUMBER}</p>
                 <p>Version: ${params.VERSION}</p>
                 <p>Author: ${params.authorName}</p>
                 <p>Project Name: ${params.PROJECT_NAME}</p>
@@ -90,7 +97,7 @@ pipeline {
                 <p>Error Log:</p>
                 <pre><span style="color:red;">${errorMessage}</span></pre>
                 <p><span style="color:red;">Check the console log of the build in Jenkins Server. Please click the Console Output below.</span></p>
-                <p>Check the <a href="${BUILD_URL}">Console Output</a>.</p>
+                <p>Check the <a href="${env.BUILD_URL}">Console Output</a>.</p>
               </body>
             </html>
           """,
@@ -103,4 +110,3 @@ pipeline {
     }
   }
 }
-
