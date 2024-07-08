@@ -1,12 +1,16 @@
 pipeline {
   agent any
 
+  environment {
+    registry = 'kapil321/another_office_repo'
+  }
+
   stages {
     stage('Build Image') {
       steps {
         script {
-          def img = "kapil321/another_office_repo:${VERSION}"
-          def dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
+          def img = "${registry}:${VERSION}"
+          dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
         }
       }
     }
@@ -14,13 +18,13 @@ pipeline {
     stage("Run the Image") {
       steps {
         script {
-          def imageName = "kapil321/another_office_repo:${VERSION}"
+          def imageName = "${registry}:${VERSION}"
           // Stop the container if it exists
-          sh "docker stop ${JOB_NAME} || true"
+          bat "docker stop ${JOB_NAME} || true"
           // Remove the container if it exists
-          sh "docker rm ${JOB_NAME} || true"
+          bat "docker rm ${JOB_NAME} || true"
           // Run the new container
-          sh "docker run -d --name ${JOB_NAME} -p 8000:8000 ${imageName}"
+          bat "docker run -d --name ${JOB_NAME} -p 8000:8000 ${imageName}"
         }
       }
     }
@@ -30,11 +34,11 @@ pipeline {
         script {
           // Login to Docker Hub
           withCredentials([usernamePassword(credentialsId: 'dockerhub_password', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-            sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+            bat "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
             // Tag the Docker image with the version number
-            sh "docker tag ${img} ${registry}:${VERSION}"
+            bat "docker tag ${img} ${registry}:${VERSION}"
             // Push the Docker image to the registry
-            sh "docker push ${registry}:${VERSION}"
+            bat "docker push ${registry}:${VERSION}"
           }
         }
       }
@@ -69,10 +73,12 @@ pipeline {
       script {
         def errorMessage = ""
         try {
-          errorMessage = sh(script: 'docker run --rm ${img} cat /error.log', returnStdout: true).trim()
+          // Attempt to fetch error logs if available
+          errorMessage = bat(script: "docker run --rm ${img} cat /error.log", returnStdout: true).trim()
         } catch (Exception e) {
           errorMessage = "Error log not found or another error occurred"
         }
+        // Send email notification on failure
         emailext(
           subject: "FAILURE: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
           body: """
