@@ -28,29 +28,33 @@ pipeline {
       steps {
         script {
           // Stop and remove the existing container if it exists
-          sh """
-            docker stop ${JOB_NAME} || true
-            docker rm ${JOB_NAME} || true
-          """
+          bat "docker stop ${JOB_NAME} || true"
+          bat "docker rm ${JOB_NAME} || true"
+
           // Run the new container
-          sh "docker run -d --name ${JOB_NAME} -p 8000:8000 ${img}"
+          bat "docker run -d --name ${JOB_NAME} -p 8000:8000 ${img}"
         }
       }
     }
 
-    stage("Publish it to docker") {
+    stage("Publish it to Docker Hub") {
+      when {
+        expression {
+          currentBuild.result == 'SUCCESS'
+        }
+      }
       steps {
         script {
           // Login to Docker Hub
           withCredentials([usernamePassword(credentialsId: 'dockerhub_password', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-            sh "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
+            bat "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
           }
 
           // Tag the Docker image with the version number
-          sh "docker tag ${img} ${registry}:${VERSION}"
+          bat "docker tag ${img} ${registry}:${VERSION}"
 
           // Push the Docker image to the registry
-          sh "docker push ${registry}:${VERSION}"
+          bat "docker push ${registry}:${VERSION}"
         }
       }
     }
@@ -84,7 +88,7 @@ pipeline {
       script {
         def errorMessage = ""
         try {
-          errorMessage = sh(script: 'docker run --rm ${img} cat /error.log', returnStdout: true).trim()
+          errorMessage = bat(script: 'docker run --rm ${img} cat /error.log', returnStdout: true).trim()
         } catch (Exception e) {
           errorMessage = "Error log not found or another error occurred"
         }
