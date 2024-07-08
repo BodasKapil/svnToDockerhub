@@ -1,16 +1,24 @@
 pipeline {
-  agent any
-
-  environment {
-    registry = 'kapil321/another_office_repo'
+  parameters {
+    string(name: 'VERSION', defaultValue: 'latest', description: 'Version number for the Docker image')
+    string(name: 'PROJECT_NAME', defaultValue: 'demo_first_project', description: 'Name of the project')
+    string(name: 'INDEX_URL', defaultValue: 'http://10.10.1.59:3141/kapil.bodas/test', description: 'Index URL for pip')
+    string(name: 'authorName', defaultValue: '', description: 'Name of the author')
+    string(name: 'readMe', defaultValue: '', description: 'Read Me content')
   }
+  environment {
+    registry = 'kapil321/another_office_repo' // Updated repository name
+    dockerhubPassword = credentials('dockerhub_password') // Use Jenkins credentials for Docker Hub password
+    registryURL = 'docker.io' // Default registry URL for Docker Hub, adjust as per your Docker registry
+  }
+  agent any
 
   stages {
     stage('Build Image') {
       steps {
         script {
           def img = "${registry}:${VERSION}"
-          dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
+          def dockerImage = docker.build(img, "--build-arg VERSION=${VERSION} --build-arg PROJECT_NAME=${PROJECT_NAME} --build-arg INDEX_URL=${INDEX_URL} .")
         }
       }
     }
@@ -19,12 +27,11 @@ pipeline {
       steps {
         script {
           def imageName = "${registry}:${VERSION}"
-          // Stop the container if it exists
-          bat "docker stop ${JOB_NAME} || true"
-          // Remove the container if it exists
-          bat "docker rm ${JOB_NAME} || true"
+          // Stop and remove the existing container if it exists
+          bat "docker stop ${env.JOB_NAME} || exit 0"
+          bat "docker rm ${env.JOB_NAME} || exit 0"
           // Run the new container
-          bat "docker run -d --name ${JOB_NAME} -p 8000:8000 ${imageName}"
+          bat "docker run -d --name ${env.JOB_NAME} -p 8000:8000 ${imageName}"
         }
       }
     }
@@ -32,14 +39,12 @@ pipeline {
     stage("Publish to Registry") {
       steps {
         script {
-          // Login to Docker Hub
-          withCredentials([usernamePassword(credentialsId: 'dockerhub_password', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-            bat "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
-            // Tag the Docker image with the version number
-            bat "docker tag ${img} ${registry}:${VERSION}"
-            // Push the Docker image to the registry
-            bat "docker push ${registry}:${VERSION}"
-          }
+          // Login to Docker Hub with username and password
+          bat "docker login -u ${env.DOCKERHUB_USERNAME} -p ${dockerhubPassword}"
+          
+          // Push the Docker image to the specified registry
+          bat "docker tag ${registry}:${VERSION} ${registryURL}/${registry}:${VERSION}"
+          bat "docker push ${registryURL}/${registry}:${VERSION}"
         }
       }
     }
@@ -73,12 +78,10 @@ pipeline {
       script {
         def errorMessage = ""
         try {
-          // Attempt to fetch error logs if available
-          errorMessage = bat(script: "docker run --rm ${img} cat /error.log", returnStdout: true).trim()
+          errorMessage = bat(script: "docker run --rm ${registry}:${VERSION} cat /error.log", returnStdout: true).trim()
         } catch (Exception e) {
           errorMessage = "Error log not found or another error occurred"
         }
-        // Send email notification on failure
         emailext(
           subject: "FAILURE: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
           body: """
